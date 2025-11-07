@@ -2,7 +2,7 @@ name: Sync Bluesky Modlist
 
 on:
   schedule:
-    - cron: "0 * * * *"   # every hour
+    - cron: "0 0 * * *"   # Once per day, at midnight UTC
   workflow_dispatch:       # allow manual run
 
 jobs:
