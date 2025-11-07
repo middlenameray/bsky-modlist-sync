@@ -1,24 +1,44 @@
-name: Sync Bluesky Modlist
+name: Sync Bluesky Verified Modlist
 
 on:
+  workflow_dispatch: # allows manual runs
   schedule:
-    - cron: "0 0 * * *"   # Once per day, at midnight UTC
-  workflow_dispatch:       # allow manual run
+    # ───────────────────────────────────────────────
+    # PHASE 1: INITIAL CATCH-UP
+    # Run once per day at midnight UTC
+    # (Change to hourly later once list is synced)
+    # ───────────────────────────────────────────────
+    - cron: "0 0 * * *"
+    #
+    # ───────────────────────────────────────────────
+    # PHASE 2: STEADY-STATE (UNCOMMENT LATER)
+    # When modlist is caught up, switch to hourly:
+    # - cron: "0 * * * *"
+    # ───────────────────────────────────────────────
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+    # Automatically retry up to 3 times, with 30-min delay
+    # if rate-limit stops early
+    retry:
+      max_attempts: 3
+      delay: 1800
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm install
-      - run: node sync-lists.js
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run sync script
         env:
           BSKY_USERNAME: ${{ secrets.BSKY_USERNAME }}
           BSKY_PASSWORD: ${{ secrets.BSKY_PASSWORD }}
-
-retry:
-  max_attempts: 3
-  delay: 1800  # seconds (30 minutes)
+        run: node sync-lists.js
