@@ -18,3 +18,7 @@ jobs:
         env:
           BSKY_USERNAME: ${{ secrets.BSKY_USERNAME }}
           BSKY_PASSWORD: ${{ secrets.BSKY_PASSWORD }}
+
+retry:
+  max_attempts: 3
+  delay: 1800  # seconds (30 minutes)
