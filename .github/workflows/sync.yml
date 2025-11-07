@@ -19,11 +19,7 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    # Automatically retry up to 3 times, with 30-min delay
-    # if rate-limit stops early
-    retry:
-      max_attempts: 3
-      delay: 1800
+    continue-on-error: false  # set true if you prefer the workflow to keep running even on error
 
     steps:
       - name: Checkout repo
