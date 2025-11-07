@@ -4,15 +4,14 @@ import { AtpAgent } from "@atproto/api";
 const username = process.env.BSKY_USERNAME;
 const password = process.env.BSKY_PASSWORD;
 
-// Verified accounts curatelist to mirror
 const SOURCE_LIST_URI =
   "at://did:plc:k3lft27u2pjqp2ptidkne7xr/app.bsky.graph.list/3lngcmewutk2z";
 
-// Name for your modlist
 const MODLIST_NAME = "Verified Accounts (modlist)";
-const BATCH_SIZE = 25; // adjust batch size if needed
+const BATCH_SIZE = 5;
+const BATCH_DELAY_MS = 400;
+const RETRY_DELAY_MS = 60 * 1000; // wait 60s on rate limit
 
-// Fetch all items from a list with pagination
 async function fetchAllListItems(agent, listUri) {
   let items = [];
   let cursor = undefined;
@@ -67,9 +66,34 @@ async function ensureModlist(agent, name) {
   return uri;
 }
 
+// Sleep helper
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Wrap API calls with automatic retry on rate-limit
+async function safeCall(fn, ...args) {
+  while (true) {
+    try {
+      return await fn(...args);
+    } catch (err) {
+      if (err.error === "RateLimitExceeded" || (err.message && err.message.includes("RateLimitExceeded"))) {
+        console.warn("⚠️ Rate limit hit. Waiting to retry...");
+        await sleep(RETRY_DELAY_MS);
+      } else if (err.message && err.message.includes("duplicate")) {
+        return; // already added, ignore
+      } else {
+        console.error("Unexpected error:", err);
+        throw err;
+      }
+    }
+  }
+}
+
 async function addToModlist(agent, listUri, did) {
-  try {
-    await agent.com.atproto.repo.createRecord({
+  await safeCall(
+    agent.com.atproto.repo.createRecord.bind(agent.com.atproto.repo),
+    {
       repo: agent.session.did,
       collection: "app.bsky.graph.listitem",
       record: {
@@ -78,15 +102,9 @@ async function addToModlist(agent, listUri, did) {
         list: listUri,
         createdAt: new Date().toISOString(),
       },
-    });
-    console.log("Added:", did);
-  } catch (err) {
-    if (err.message.includes("duplicate")) {
-      console.log("Already present:", did);
-    } else {
-      console.error("Add error:", err);
     }
-  }
+  );
+  console.log("Added:", did);
 }
 
 async function removeFromModlist(agent, listUri, did) {
@@ -100,11 +118,14 @@ async function removeFromModlist(agent, listUri, did) {
   );
   if (!rec) return;
 
-  await agent.com.atproto.repo.deleteRecord({
-    repo: agent.session.did,
-    collection: "app.bsky.graph.listitem",
-    rkey: rec.uri.split("/").pop(),
-  });
+  await safeCall(
+    agent.com.atproto.repo.deleteRecord.bind(agent.com.atproto.repo),
+    {
+      repo: agent.session.did,
+      collection: "app.bsky.graph.listitem",
+      rkey: rec.uri.split("/").pop(),
+    }
+  );
   console.log("Removed:", did);
 }
 
@@ -123,22 +144,27 @@ async function main() {
   let addedCount = 0;
   let removedCount = 0;
 
-  // Prepare batches
   const toAdd = curatelistDIDs.filter((did) => !modlistDIDs.includes(did));
   const toRemove = modlistDIDs.filter((did) => !curatelistDIDs.includes(did));
 
   // Batch add
   for (let i = 0; i < toAdd.length; i += BATCH_SIZE) {
     const batch = toAdd.slice(i, i + BATCH_SIZE);
-    await Promise.all(batch.map((did) => addToModlist(agent, modlistUri, did)));
+    for (const did of batch) {
+      await addToModlist(agent, modlistUri, did);
+    }
     addedCount += batch.length;
+    await sleep(BATCH_DELAY_MS);
   }
 
   // Batch remove
   for (let i = 0; i < toRemove.length; i += BATCH_SIZE) {
     const batch = toRemove.slice(i, i + BATCH_SIZE);
-    await Promise.all(batch.map((did) => removeFromModlist(agent, modlistUri, did)));
+    for (const did of batch) {
+      await removeFromModlist(agent, modlistUri, did);
+    }
     removedCount += batch.length;
+    await sleep(BATCH_DELAY_MS);
   }
 
   console.log(`✅ Sync complete (${addedCount} added, ${removedCount} removed).`);
