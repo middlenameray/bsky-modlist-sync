@@ -71,14 +71,30 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Wrap API calls with automatic retry on rate-limit
+// Wrap API calls with automatic retry on rate-limit, with a graceful exit
+let rateLimitHits = 0;
+const MAX_RATE_LIMIT_HITS = 3;
+
 async function safeCall(fn, ...args) {
   while (true) {
     try {
-      return await fn(...args);
+      const result = await fn(...args);
+      rateLimitHits = 0; // reset after successful call
+      return result;
     } catch (err) {
-      if (err.error === "RateLimitExceeded" || (err.message && err.message.includes("RateLimitExceeded"))) {
-        console.warn("⚠️ Rate limit hit. Waiting to retry...");
+      if (
+        err.error === "RateLimitExceeded" ||
+        (err.message && err.message.includes("RateLimitExceeded"))
+      ) {
+        rateLimitHits++;
+        console.warn(`⚠️ Rate limit hit (#${rateLimitHits}). Waiting ${RETRY_DELAY_MS / 1000}s before retry...`);
+
+        // If we've hit rate limit too many times, exit gracefully
+        if (rateLimitHits >= MAX_RATE_LIMIT_HITS) {
+          console.warn("⚠️ Too many rate limit hits in a row. Exiting early to retry later.");
+          process.exit(0); // graceful exit, GitHub Actions treats this as success
+        }
+
         await sleep(RETRY_DELAY_MS);
       } else if (err.message && err.message.includes("duplicate")) {
         return; // already added, ignore
