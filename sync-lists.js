@@ -4,10 +4,31 @@ import { AtpAgent } from "@atproto/api";
 const username = process.env.BSKY_USERNAME;
 const password = process.env.BSKY_PASSWORD;
 
-// The verified accounts curatelist you want to mirror
-const SOURCE_LIST_URI = "at://did:plc:k3lft27u2pjqp2ptidkne7xr/app.bsky.graph.list/3lngcmewutk2z";
+// Verified accounts curatelist to mirror
+const SOURCE_LIST_URI =
+  "at://did:plc:k3lft27u2pjqp2ptidkne7xr/app.bsky.graph.list/3lngcmewutk2z";
+
 // Name for your modlist
 const MODLIST_NAME = "Verified Accounts (modlist)";
+const BATCH_SIZE = 25; // adjust batch size if needed
+
+// Fetch all items from a list with pagination
+async function fetchAllListItems(agent, listUri) {
+  let items = [];
+  let cursor = undefined;
+
+  do {
+    const res = await agent.app.bsky.graph.getList({
+      list: listUri,
+      limit: 100,
+      cursor,
+    });
+    items.push(...res.data.items);
+    cursor = res.data.cursor;
+  } while (cursor);
+
+  return items;
+}
 
 async function ensureModlist(agent, name) {
   const lists = await agent.com.atproto.repo.listRecords({
@@ -16,12 +37,15 @@ async function ensureModlist(agent, name) {
   });
 
   const existing = lists.data.records.find(
-    (r) => r.value.name === name && r.value.purpose === "app.bsky.graph.defs#modlist"
+    (r) =>
+      r.value.name === name &&
+      r.value.purpose === "app.bsky.graph.defs#modlist"
   );
 
   if (existing) {
-    const uri = `at://${agent.session.did}/app.bsky.graph.list/${existing.uri.split('/').pop()}`;
-    console.log("Found existing modlist:", uri);
+    const rkey = existing.uri.split("/").pop();
+    const uri = `at://${agent.session.did}/app.bsky.graph.list/${rkey}`;
+    console.log("✅ Found existing modlist:", uri);
     return uri;
   }
 
@@ -37,8 +61,9 @@ async function ensureModlist(agent, name) {
     },
   });
 
-  const uri = `at://${agent.session.did}/app.bsky.graph.list/${res.data.uri.split('/').pop()}`;
-  console.log("Created new modlist:", uri);
+  const rkey = res.data.uri.split("/").pop();
+  const uri = `at://${agent.session.did}/app.bsky.graph.list/${rkey}`;
+  console.log("🆕 Created new modlist:", uri);
   return uri;
 }
 
@@ -89,29 +114,34 @@ async function main() {
 
   const modlistUri = await ensureModlist(agent, MODLIST_NAME);
 
-  // fetch curatelist
-  const curatelist = await agent.app.bsky.graph.getList({ list: SOURCE_LIST_URI });
-  const curatelistDIDs = curatelist.data.items.map((i) => i.subject.did);
+  const curatelistItems = await fetchAllListItems(agent, SOURCE_LIST_URI);
+  const curatelistDIDs = curatelistItems.map((i) => i.subject.did);
 
-  // fetch modlist
-  const modlist = await agent.app.bsky.graph.getList({ list: modlistUri });
-  const modlistDIDs = modlist.data.items.map((i) => i.subject.did);
+  const modlistItems = await fetchAllListItems(agent, modlistUri);
+  const modlistDIDs = modlistItems.map((i) => i.subject.did);
 
-  // sync adds
-  for (const did of curatelistDIDs) {
-    if (!modlistDIDs.includes(did)) {
-      await addToModlist(agent, modlistUri, did);
-    }
+  let addedCount = 0;
+  let removedCount = 0;
+
+  // Prepare batches
+  const toAdd = curatelistDIDs.filter((did) => !modlistDIDs.includes(did));
+  const toRemove = modlistDIDs.filter((did) => !curatelistDIDs.includes(did));
+
+  // Batch add
+  for (let i = 0; i < toAdd.length; i += BATCH_SIZE) {
+    const batch = toAdd.slice(i, i + BATCH_SIZE);
+    await Promise.all(batch.map((did) => addToModlist(agent, modlistUri, did)));
+    addedCount += batch.length;
   }
 
-  // sync removals
-  for (const did of modlistDIDs) {
-    if (!curatelistDIDs.includes(did)) {
-      await removeFromModlist(agent, modlistUri, did);
-    }
+  // Batch remove
+  for (let i = 0; i < toRemove.length; i += BATCH_SIZE) {
+    const batch = toRemove.slice(i, i + BATCH_SIZE);
+    await Promise.all(batch.map((did) => removeFromModlist(agent, modlistUri, did)));
+    removedCount += batch.length;
   }
 
-  console.log("✅ Sync complete.");
+  console.log(`✅ Sync complete (${addedCount} added, ${removedCount} removed).`);
 }
 
 main().catch((e) => {
