@@ -1,0 +1,7 @@
+{
+  "name": "bsky-modlist-sync",
+  "type": "module",
+  "dependencies": {
+    "@atproto/api": "^0.13.9"
+  }
+}
