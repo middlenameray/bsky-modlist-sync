@@ -20,8 +20,9 @@ async function ensureModlist(agent, name) {
   );
 
   if (existing) {
-    console.log("Found existing modlist:", existing.uri);
-    return existing.uri;
+    const uri = `at://${agent.session.did}/app.bsky.graph.list/${existing.uri.split('/').pop()}`;
+    console.log("Found existing modlist:", uri);
+    return uri;
   }
 
   const res = await agent.com.atproto.repo.createRecord({
@@ -36,8 +37,9 @@ async function ensureModlist(agent, name) {
     },
   });
 
-  console.log("Created new modlist:", res.uri);
-  return res.uri;
+  const uri = `at://${agent.session.did}/app.bsky.graph.list/${res.data.uri.split('/').pop()}`;
+  console.log("Created new modlist:", uri);
+  return uri;
 }
 
 async function addToModlist(agent, listUri, did) {
