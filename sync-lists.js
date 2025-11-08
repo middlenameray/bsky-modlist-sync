@@ -151,17 +151,25 @@ async function main() {
 
   const modlistUri = await ensureModlist(agent, MODLIST_NAME);
 
+  // Log current modlist size at start
+  const existingModlistItems = await fetchAllListItems(agent, modlistUri);
+  console.log(`📦 Starting sync. Current modlist size: ${existingModlistItems.length}`);
+
+  // Fetch source curatelist items
   const curatelistItems = await fetchAllListItems(agent, SOURCE_LIST_URI);
   const curatelistDIDs = curatelistItems.map((i) => i.subject.did);
 
-  const modlistItems = await fetchAllListItems(agent, modlistUri);
-  const modlistDIDs = modlistItems.map((i) => i.subject.did);
+  // Fetch current modlist items
+  const modlistDIDs = existingModlistItems.map((i) => i.subject.did);
+
+  // Determine additions/removals
+  const toAdd = curatelistDIDs.filter((did) => !modlistDIDs.includes(did));
+  const toRemove = modlistDIDs.filter((did) => !curatelistDIDs.includes(did));
 
   let addedCount = 0;
   let removedCount = 0;
 
-  const toAdd = curatelistDIDs.filter((did) => !modlistDIDs.includes(did));
-  const toRemove = modlistDIDs.filter((did) => !curatelistDIDs.includes(did));
+  console.log(`📋 Changes to apply: ${toAdd.length} to add, ${toRemove.length} to remove`);
 
   // Batch add
   for (let i = 0; i < toAdd.length; i += BATCH_SIZE) {
@@ -184,9 +192,14 @@ async function main() {
   }
 
   console.log(`✅ Sync complete (${addedCount} added, ${removedCount} removed).`);
+
+  // Fetch updated modlist count for log output
+  const updatedModlistItems = await fetchAllListItems(agent, modlistUri);
+  console.log(`📊 Total accounts now in modlist: ${updatedModlistItems.length}`);
 }
 
 main().catch((e) => {
   console.error("Error:", e);
   process.exit(1);
 });
+
