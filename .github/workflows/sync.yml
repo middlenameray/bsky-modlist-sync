@@ -8,15 +8,12 @@ on:
     # Run once per day at midnight UTC
     # (Change to hourly later once list is synced)
     # ───────────────────────────────────────────────
-    - cron: "0 0 * * *"
-    - cron: "0 6 * * *"  # 6am UTC
-    - cron: "0 12 * * *" # noon UTC
-    - cron: "0 18 * * *" # 6pm UTC
+    # - cron: "0 0 * * *"
     #
     # ───────────────────────────────────────────────
     # PHASE 2: STEADY-STATE (UNCOMMENT LATER)
     # When modlist is caught up, switch to hourly:
-    # - cron: "0 * * * *"
+    - cron: "0 * * * *"
     # ───────────────────────────────────────────────
 
 jobs:
