@@ -194,8 +194,12 @@ async function main() {
   console.log(`✅ Sync complete (${addedCount} added, ${removedCount} removed).`);
 
   // Fetch updated modlist count for log output
-  const updatedModlistItems = await fetchAllListItems(agent, modlistUri);
-  console.log(`📊 Total accounts now in modlist: ${updatedModlistItems.length}`);
+  try {
+    const updatedModlistItems = await fetchAllListItems(agent, modlistUri);
+    console.log(`📊 Total accounts now in modlist: ${updatedModlistItems.length}`);
+  } catch (err) {
+    console.warn("⚠️ Could not fetch final modlist count:", err.message);
+  }
 }
 
 main().catch((e) => {
